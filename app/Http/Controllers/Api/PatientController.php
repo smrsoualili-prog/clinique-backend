@@ -10,7 +10,20 @@ class PatientController extends Controller
 {
     public function index(Request $request)
     {
+        $user  = $request->user();
         $query = Patient::query();
+
+        if ($user->isMedecin() && !$user->isChefService()) {
+            $query->whereHas('appointments', function ($q) use ($user) {
+                $q->where('medecin_id', $user->id);
+            });
+        }
+
+        if ($user->isMedecin() && $user->isChefService()) {
+            $query->whereHas('appointments', function ($q) use ($user) {
+                $q->where('service_id', $user->service_id);
+            });
+        }
 
         if ($request->has('search')) {
             $query->where(function ($q) use ($request) {

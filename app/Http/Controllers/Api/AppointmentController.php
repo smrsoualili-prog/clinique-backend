@@ -3,74 +3,71 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Appointment;
+use App\Models\Invoice;
 use Illuminate\Http\Request;
 
-class AppointmentController extends Controller
+class InvoiceController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Appointment::with(['patient', 'medecin', 'service']);
-
-        if ($request->has('medecin_id')) {
-            $query->where('medecin_id', $request->medecin_id);
-        }
+        $query = Invoice::with('patient');
 
         if ($request->has('patient_id')) {
             $query->where('patient_id', $request->patient_id);
         }
 
-        if ($request->has('date')) {
-            $query->whereDate('date_heure', $request->date);
+        if ($request->has('statut')) {
+            $query->where('statut', $request->statut);
         }
 
         return response()->json(
-            $query->orderBy('date_heure', 'asc')->paginate(20)
+            $query->orderBy('created_at', 'desc')->paginate(20)
         );
     }
 
     public function store(Request $request)
     {
         $data = $request->validate([
-            'patient_id'     => 'required|exists:patients,id',
-            'medecin_id'     => 'required|exists:users,id',
-            'service_id'     => 'required|exists:services,id',
-            'date_heure'     => 'required|date',
-            'duree_minutes'  => 'integer|min:15',
-            'notes'          => 'nullable|string',
+            'patient_id'    => 'required|exists:patients,id',
+            'montant_total' => 'required|numeric|min:0',
+            'details'       => 'nullable|string',
         ]);
 
-        $appointment = Appointment::create($data);
-
-        return response()->json(
-            $appointment->load(['patient', 'medecin', 'service']), 201
+        $data['date_emission'] = now();
+        $data['numero'] = 'FAC-' . date('Y') . '-' . str_pad(
+            Invoice::count() + 1, 4, '0', STR_PAD_LEFT
         );
+
+        $invoice = Invoice::create($data);
+
+        return response()->json($invoice->load('patient'), 201);
     }
 
-    public function show(Appointment $appointment)
+    public function show(Invoice $invoice)
     {
-        return response()->json(
-            $appointment->load(['patient', 'medecin', 'service', 'medicalRecord'])
-        );
+        return response()->json($invoice->load('patient'));
     }
 
-    public function update(Request $request, Appointment $appointment)
+    public function update(Request $request, Invoice $invoice)
     {
         $data = $request->validate([
-            'date_heure'    => 'sometimes|date',
-            'duree_minutes' => 'sometimes|integer|min:15',
-            'statut'        => 'sometimes|in:planifie,confirme,annule,termine',
-            'notes'         => 'nullable|string',
+            'montant_total' => 'sometimes|numeric|min:0',
+            'statut'        => 'sometimes|in:en_attente,payee,annulee',
+            'details'       => 'nullable|string',
         ]);
 
-        $appointment->update($data);
+        if (isset($data['statut']) && $data['statut'] === 'payee') {
+            $data['date_paiement'] = now();
+        }
 
-        return response()->json($appointment->load(['patient', 'medecin', 'service']));
+        $invoice->update($data);
+
+        return response()->json($invoice->load('patient'));
     }
 
-    public function destroy(Appointment $appointment)
+    public function destroy(Invoice $invoice)
     {
-        $appointment->delete();
-        return response()->json(['message' => 'RDV supprimé.']);
+        $invoice->delete();
+        return response()->json(['message' => 'Facture supprimée.']);
     }
 }
